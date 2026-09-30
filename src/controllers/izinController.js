@@ -2,7 +2,7 @@ const prisma = require('../config/database');
 
 async function list(ctx) {
 	const rows = await prisma.$queryRaw`
-		SELECT i.id, i.nim, i.tanggal, i.alasan, i.file_bukti,
+		SELECT i.id, i.nim, i.tanggal, i.alasan, i.file_bukti, i.status_izin,
 		       u.nama, u.email, u.kamar_id, k.no_kamar, k.lantai, g.nama AS nama_gedung
 		FROM izin i
 		JOIN \`user\` u ON u.nim = i.nim
@@ -22,7 +22,7 @@ async function list(ctx) {
 			created_at: row.tanggal,
 			alasan: row.alasan,
 			file_bukti: row.file_bukti,
-			status_izin: null,
+			status_izin: row.status_izin,
 			user: {
 				id: row.nim,
 				nim_nip: row.nim,
@@ -54,11 +54,29 @@ async function create(ctx) {
 		VALUES (${ctx.state.user.nim}, ${tanggal}, ${body.alasan}, ${filePath})
 	`;
 	ctx.status = 201;
-	ctx.body = { record: { nim: ctx.state.user.nim, tanggal, alasan: body.alasan, file_bukti: filePath } };
+	ctx.body = { record: { nim: ctx.state.user.nim, tanggal, alasan: body.alasan, file_bukti: filePath, status_izin: 'pending' } };
 }
 
 async function updateStatus(ctx) {
-	ctx.throw(409, 'ERD tabel izin tidak memiliki kolom status atau approved_by; keputusan tidak dapat disimpan');
+	const id = Number(ctx.params.id);
+	const { status_izin } = ctx.request.body || {};
+	if (!Number.isSafeInteger(id) || id < 1) ctx.throw(400, 'ID permohonan izin tidak valid');
+	if (!['disetujui', 'ditolak'].includes(status_izin)) {
+		ctx.throw(400, 'Status izin harus disetujui atau ditolak');
+	}
+
+	const records = await prisma.$queryRaw`
+		SELECT id, status_izin FROM izin WHERE id = ${id} LIMIT 1
+	`;
+	if (!records.length) ctx.throw(404, 'Permohonan izin tidak ditemukan');
+	if (records[0].status_izin !== 'pending') ctx.throw(409, 'Permohonan izin sudah diproses');
+
+	const updated = await prisma.$executeRaw`
+		UPDATE izin SET status_izin = ${status_izin}
+		WHERE id = ${id} AND status_izin = 'pending'
+	`;
+	if (updated !== 1) ctx.throw(409, 'Permohonan izin sudah diproses oleh pengguna lain');
+	ctx.body = { record: { id, status_izin } };
 }
 
 module.exports = { list, create, updateStatus };

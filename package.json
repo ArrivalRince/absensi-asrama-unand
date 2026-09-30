@@ -10,7 +10,9 @@
     "koa": "^3.2.1",
     "koa-bodyparser": "^4.4.1",
     "koa-static": "^5.0.0",
-    "multer": "^2.4.0"
+    "multer": "^2.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "name": "sistem-asrama-unand",
   "version": "1.0.0",
@@ -18,8 +20,11 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon src/app.js",
-    "start": "node src/app.js",
+    "dev": "node scripts/dev.js",
+    "dev:server": "nodemon src/server.js",
+    "dev:client": "vite --config vite.config.js",
+    "build": "vite build --config vite.config.js",
+    "start": "node src/server.js",
     "bootstrap:admin": "node scripts/bootstrapAdmin.js"
   },
   "keywords": [],
@@ -27,7 +32,10 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.1",
     "nodemon": "^3.1.14",
-    "prisma": "5.22.0"
+    "prisma": "5.22.0",
+    "vite": "^6.3.5"
   }
 }

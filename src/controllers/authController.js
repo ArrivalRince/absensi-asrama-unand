@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const prisma = require('../config/database');
+const userService = require('../services/userService');
 
 const viewPermissions = {
 	penghuni: ['view-camera', 'view-riwayat'],
@@ -8,24 +8,14 @@ const viewPermissions = {
 	admin: ['view-admin', 'view-fasilitator', 'view-riwayat-fasil']
 };
 
-function configuredNims(name) {
-	return new Set((process.env[name] || '').split(',').map(value => value.trim()).filter(Boolean));
-}
-
-function roleFor(nim) {
-	if (configuredNims('ADMIN_NIMS').has(nim)) return 'admin';
-	if (configuredNims('FACILITATOR_NIMS').has(nim)) return 'fasil';
-	return 'penghuni';
-}
-
 function serializeUser(user) {
-	const role = roleFor(user.nim);
+	const role = user.role;
 	return {
 		id: user.nim,
 		nim: user.nim,
 		name: user.nama,
 		email: user.email,
-		role: role === 'fasil' ? 'fasilitator' : role,
+		role,
 		roleTitle: role === 'penghuni' ? 'Penghuni' : role === 'fasil' ? 'Fasilitator' : 'Administrator',
 		avatar: '',
 		allowedViews: viewPermissions[role] || []
@@ -39,13 +29,7 @@ async function login(ctx) {
 		ctx.throw(400, 'NIM/NIP/email dan password wajib diisi');
 	}
 
-	const users = await prisma.$queryRaw`
-		SELECT nim, nama, email, password, kamar_id
-		FROM \`user\`
-		WHERE nim = ${identifier} OR email = ${identifier}
-		LIMIT 1
-	`;
-	const user = users[0];
+	const user = await userService.findByIdentifier(identifier);
 	const isBcryptHash = user && /^\$2[aby]\$\d{2}\$/.test(user.password);
 	const passwordIsValid = user && (isBcryptHash
 		? await bcrypt.compare(password, user.password)
@@ -56,16 +40,11 @@ async function login(ctx) {
 	}
 
 	if (!isBcryptHash) {
-		const upgradedPassword = await bcrypt.hash(password, 12);
-		await prisma.$executeRaw`
-			UPDATE \`user\`
-			SET password = ${upgradedPassword}
-			WHERE nim = ${user.nim} AND password = ${user.password}
-		`;
+		await userService.upgradePassword(user, password);
 	}
 
 	const token = jwt.sign(
-		{ nim: user.nim, role: roleFor(user.nim) },
+		{ nim: user.nim, role: user.role },
 		process.env.JWT_SECRET,
 		{ expiresIn: '12h' }
 	);
@@ -74,15 +53,9 @@ async function login(ctx) {
 }
 
 async function me(ctx) {
-	const users = await prisma.$queryRaw`
-		SELECT nim, nama, email, kamar_id
-		FROM \`user\`
-		WHERE nim = ${ctx.state.user.nim}
-		LIMIT 1
-	`;
-	const user = users[0];
+	const user = await userService.findByNim(ctx.state.user.nim);
 	if (!user) ctx.throw(404, 'Akun tidak ditemukan');
 	ctx.body = { user: serializeUser(user) };
 }
 
-module.exports = { login, me, roleFor, serializeUser };
+module.exports = { login, me, serializeUser };

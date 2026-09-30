@@ -1,31 +1,23 @@
-require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const serve = require('koa-static');
 const Koa = require('koa');
 const bodyParser = require('koa-bodyparser');
-const prisma = require('./config/database');
-const router = require('./routes');
+const errorMiddleware = require('./middlewares/errorMiddleware');
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const presensiRoutes = require('./routes/presensiRoutes');
+const izinRoutes = require('./routes/izinRoutes');
+const healthRoutes = require('./routes/healthRoutes');
 
 const app = new Koa();
-const PORT = process.env.PORT || 3000;
 
-app.use(async (ctx, next) => {
-  try {
-    await next();
-  } catch (error) {
-    ctx.status = error.status || (error.code === 'P2002' ? 409 : error.code === 'P2003' ? 400 : 500);
-    const message = error.code === 'P2002'
-      ? 'NIM/NIP atau email sudah terdaftar'
-      : error.code === 'P2003' ? 'Kamar yang dipilih tidak ditemukan' : error.message;
-    ctx.body = { error: ctx.status < 500 ? message : 'Terjadi kesalahan pada server' };
-    if (ctx.status === 500) console.error(error);
-  }
-});
-
+app.use(errorMiddleware);
 app.use(bodyParser({ jsonLimit: '5mb' }));
-app.use(router.routes());
-app.use(router.allowedMethods());
+for (const router of [healthRoutes, authRoutes, userRoutes, presensiRoutes, izinRoutes]) {
+  app.use(router.routes());
+  app.use(router.allowedMethods());
+}
 app.use(async (ctx, next) => {
   if (!ctx.path.startsWith('/uploads/')) return next();
   const uploadRoot = path.resolve(__dirname, '../uploads');
@@ -37,19 +29,6 @@ app.use(async (ctx, next) => {
   ctx.set('X-Content-Type-Options', 'nosniff');
   ctx.body = fs.createReadStream(requestedPath);
 });
-app.use(serve(path.join(__dirname, '../public')));
+app.use(serve(path.join(__dirname, '../dist')));
 
-async function testConnection() {
-  try {
-    await prisma.$connect();
-    console.log('✅ Berhasil konek ke database MySQL');
-  } catch (err) {
-    console.error('❌ Gagal konek ke database:', err.message);
-  }
-}
-
-testConnection();
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server Koa berjalan di http://localhost:${PORT}`);
-});
+module.exports = app;
